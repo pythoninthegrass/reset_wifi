@@ -1,26 +1,26 @@
 #!/usr/bin/env bash
 
-# Repurposed by-hand bits into a script.
-
 # Exit upon failed command
 # set -e
 
 # Logs
 logTime=$(date +%Y-%m-%d:%H:%M:%S)
-resetLog="/tmp/pkg_install_$logTime.log"
+resetLog="/tmp/$(basename "$0" | cut -d. -f1)_$logTime.log"
 exec &> >(tee -a "$resetLog")
 
 # Current user
-loggedInUser=$(ls -l /dev/console | cut -d " " -f 4)
+# loggedInUser=$(stat -f%Su /dev/console)
 
 # Working directory
-scriptDir=$(cd "$(dirname "$0")" && pwd)
+# scriptDir=$(cd "$(dirname "$0")" && pwd)
 
-# Check for root privileges
-if [ $(whoami) != "root" ]; then
-    echo "Sorry, you need super user privileges to run this script."
-    exit 1
+# Ensure running as root
+if [[ "$(id -u)" != "0" ]]; then
+  exec sudo "$0" "$@"
 fi
+
+# Set $IFS to eliminate whitespace in pathnames
+IFS="$(printf '\n\t')"
 
 # PLISTs
 declare -a plistsArray=(
@@ -33,13 +33,25 @@ declare -a plistsArray=(
 # echo $plistsArray
 
 # Remove wifi PLISTs
-cd /Library/Preferences/SystemConfiguration/
+cd /Library/Preferences/SystemConfiguration/ || exit
 for f in "${plistsArray[@]}"; do
     echo "Removed $f."
-    [ -f "$f" ] && rm -f "$f"
+    [[ -f "$f" ]] && rm -f "$f"
 done
 
+unset IFS
+
 # Reboot
-echo "Restarting now. Hit CTRL-C to cancel."
-sleep 5s
-sudo reboot
+confirm() {
+    # call with a prompt string or use a default
+    read -r -p "${1:-Are you sure? [y/N]} " response
+    case "$response" in
+        [yY][eE][sS]|[yY])
+            true
+            ;;
+        *)
+            false
+            ;;
+    esac
+}
+confirm "Do you want to reboot now [Y/n]?" && /usr/bin/sudo sh -c "reboot"
